@@ -1,36 +1,36 @@
+import com.lightbend.lagom.sbt.{Internal, LagomImport}
+
 organization in ThisBuild := "com.example"
 version in ThisBuild := "1.0-SNAPSHOT"
 
 // the Scala version that will be used for cross-compiled libraries
-scalaVersion in ThisBuild := "2.11.8"
-
-val macwire = "com.softwaremill.macwire" %% "macros" % "2.2.5" % "provided"
-val scalaTest = "org.scalatest" %% "scalatest" % "3.0.1" % Test
+scalaVersion in ThisBuild := "2.12.4"
 
 lagomCassandraEnabled in ThisBuild := false
 
+val lombok = "org.projectlombok" % "lombok" % "1.16.12"
+
 lazy val `holiday-listing` = (project in file("."))
-  .aggregate(`reservation-api`, `reservation-impl`, `search-api`, `search-impl`)
+  .aggregate(`reservation-api`, `reservation-impl`, `search-api`, `search-impl`, `web-gateway`)
 
 lazy val `reservation-api` = (project in file("reservation-api"))
   .settings(
     libraryDependencies ++= Seq(
-      lagomScaladslApi
+      lombok,
+      lagomJavadslApi
     )
   )
 
 lazy val `reservation-impl` = (project in file("reservation-impl"))
-  .enablePlugins(LagomScala)
+  .enablePlugins(LagomJava)
   .settings(
     libraryDependencies ++= Seq(
-      lagomScaladslPersistenceJdbc,
-      "com.typesafe.play" %% "play-slick" % "2.0.2",
+      lombok,
+      lagomJavadslPersistenceJpa,
+      "org.hibernate" % "hibernate-core" % "5.2.16.Final",
+      "org.hibernate" % "hibernate-jpamodelgen" % "5.2.16.Final",
       "com.h2database" % "h2" % "1.4.196",
-      lagomScaladslKafkaBroker,
-      lagomScaladslPubSub,
-      lagomScaladslTestKit,
-      macwire,
-      scalaTest
+      lagomJavadslKafkaBroker
     )
   )
   .settings(lagomForkedTestSettings: _*)
@@ -39,18 +39,17 @@ lazy val `reservation-impl` = (project in file("reservation-impl"))
 lazy val `search-api` = (project in file("search-api"))
   .settings(
     libraryDependencies ++= Seq(
-      lagomScaladslApi
+      lombok,
+      lagomJavadslApi
     )
   ).dependsOn(`reservation-api`)
 
 lazy val `search-impl` = (project in file("search-impl"))
-  .enablePlugins(LagomScala)
+  .enablePlugins(LagomJava)
   .settings(
     libraryDependencies ++= Seq(
-      lagomScaladslTestKit,
-      lagomScaladslKafkaClient,
-      macwire,
-      scalaTest
+      lombok,
+      lagomJavadslKafkaClient
     )
   )
   .dependsOn(`search-api`, `reservation-api`)
@@ -62,9 +61,9 @@ lazy val `web-gateway` = (project in file("web-gateway"))
   .settings(
     version := "1.0-SNAPSHOT",
     libraryDependencies ++= Seq(
-      lagomScaladslServer,
-      macwire,
-      scalaTest,
+      lagomJavadslClient,
+      LagomImport.component("lagom-javadsl-play-integration") % Internal.Configs.DevRuntime,
+      lombok,
       "org.webjars" % "foundation" % "6.2.3",
       "org.webjars" % "foundation-icon-fonts" % "d596a3cfb3"
     ),

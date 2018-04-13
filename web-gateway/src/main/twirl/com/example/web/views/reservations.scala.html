@@ -17,7 +17,7 @@
     <ul>
     @for(reservation <- reservations) {
         <li>
-            @Messages("reservationRange", reservation.checkin, reservation.checkout)
+            @Messages("reservationRange", reservation.getCheckin, reservation.getCheckout)
         </li>
     }
     </ul>

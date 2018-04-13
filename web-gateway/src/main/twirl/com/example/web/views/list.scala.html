@@ -23,12 +23,12 @@
                         </div>
                         <div class="listing-name">@listing.listingName</div>
                         <div class="listing-price"><strong>@Messages("price"):</strong> @Messages("priceFormat", listing.price)</div>
-                        @form(routes.Main.book) {
+                        @form(com.example.web.controllers.routes.Main.book) {
                             <input type="hidden" name="listingId" value="@listing.listingId"/>
                             <input type="hidden" name="checkin" value="@searchForm.checkin"/>
                             <input type="hidden" name="checkout" value="@searchForm.checkout"/>
                             <input type="submit" value="@Messages("bookNow")" class="button"/>
-                            <a href="@routes.Main.reservations(listing.listingId)">@Messages("viewReservations")</a>
+                            <a href="@com.example.web.controllers.routes.Main.reservations(listing.listingId)">@Messages("viewReservations")</a>
                         }
                     </div>
                 </div>

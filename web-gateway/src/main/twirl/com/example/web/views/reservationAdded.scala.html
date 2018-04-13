@@ -8,6 +8,6 @@
 
     <p>@Messages("reservationAddedDescription")</p>
 
-    <p><a href="@routes.Main.reservations(added.listingId)">@Messages("viewReservationsForListing")</a></p>
-    <p><a href="@routes.Main.index()">@Messages("backToSearch")</a></p>
+    <p><a href="@com.example.web.controllers.routes.Main.reservations(added.getListingId)">@Messages("viewReservationsForListing")</a></p>
+    <p><a href="@com.example.web.controllers.routes.Main.index()">@Messages("backToSearch")</a></p>
 }

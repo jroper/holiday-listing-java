@@ -6,7 +6,7 @@
 @main(Messages("holidayListings")) {
     <h2>@Messages("holidayListings")</h2>
 
-    @foundationForm(searchForm, routes.Main.search()) {
+    @foundationForm(searchForm, com.example.web.controllers.routes.Main.search()) {
         <div class="row">
             <div class="medium-6 columns">
             @inputText(searchForm("checkin"))

@@ -6,38 +6,45 @@ import java.util.UUID
 
 import akka.Done
 import akka.actor.{Actor, ActorSystem, Props, Status}
-import com.lightbend.lagom.scaladsl.api.ServiceCall
 import com.example.search.api.{ListingSearchResult, SearchService}
 import com.example.reservation.api.{ReservationAdded, ReservationService}
-import com.lightbend.lagom.scaladsl.api.transport.NotFound
 import akka.pattern.ask
 import akka.stream.scaladsl.Flow
 import akka.util.Timeout
-import play.api.libs.json.{Format, Json}
+import com.lightbend.lagom.javadsl.api.transport.NotFound
+import javax.inject.{Inject, Singleton}
+import play.libs.Json
 
 import scala.concurrent.duration._
+import scala.compat.java8.FutureConverters._
+import scala.collection.JavaConverters._
+import java.util
+
+import com.lightbend.lagom.javadsl.api.ServiceCall
+import org.pcollections.HashTreePSet
+
+import scala.beans.BeanProperty
 
 /**
   * Implementation of the SearchService.
   */
-class SearchServiceImpl(reservationService: ReservationService, actorSystem: ActorSystem) extends SearchService {
+@Singleton
+class SearchServiceImpl @Inject() (reservationService: ReservationService, actorSystem: ActorSystem) extends SearchService {
 
   import SearchActor._
   private val searchActor = actorSystem.actorOf(Props[SearchActor])
   implicit val searchActorTimeout = Timeout(10.seconds)
-
-  reservationService.reservationEvents.subscribe.atLeastOnce(Flow[ReservationAdded].mapAsync(1) { reservation =>
-    println(s"Got message: $reservation")
-
-    (searchActor ? reservation).mapTo[Done]
-  })
-
-  override def searchListings(checkin: LocalDate, checkout: LocalDate) = ServiceCall { _ =>
-    (searchActor ? Search(checkin, checkout)).mapTo[Seq[ListingSearchResult]]
+  
+  override def searchListings(checkin: LocalDate, checkout: LocalDate) = { _ =>
+    (searchActor ? Search(checkin, checkout)).mapTo[util.List[ListingSearchResult]].toJava
   }
 
-  override def listingName(listingId: UUID) = ServiceCall { _ =>
-    (searchActor ? ListingName(listingId)).mapTo[String]
+  override def listingName(listingId: UUID) = { _ =>
+    (searchActor ? ListingName(listingId)).mapTo[String].toJava
+  }
+
+  override def reservationAdded: ServiceCall[ReservationAdded, Done] = { reservation =>
+    (searchActor ? reservation).mapTo[Done].toJava
   }
 }
 
@@ -62,7 +69,7 @@ private class SearchActor extends Actor {
     case ListingName(listingId) =>
       repo.name(listingId) match {
         case Some(name) => sender() ! name
-        case None => sender() ! Status.Failure(NotFound(s"Listing $listingId not found"))
+        case None => sender() ! Status.Failure(new NotFound(s"Listing $listingId not found"))
       }
   }
 }
@@ -76,10 +83,10 @@ private class SearchRepository {
   private var reservations: Map[UUID, ListingIndex] = if (reservationFile.exists()) {
     val is = new FileInputStream(reservationFile)
     try {
-      val raw = Json.parse(is).as[Map[String, ListingIndex]]
+      val raw = Json.fromJson(Json.parse(is), classOf[ListingIndexMap]).map.asScala
       raw.map {
         case (id, index) => UUID.fromString(id) -> index
-      }
+      }.toMap
     } finally {
       is.close()
     }
@@ -90,7 +97,7 @@ private class SearchRepository {
       ListingSearchResult(UUID.randomUUID(), "Budget hotel convenient to town centre", "hotel.jpeg", 120),
       ListingSearchResult(UUID.randomUUID(), "Quaint country B&B", "bnb.jpeg", 180)
     ).map { listing =>
-      listing.listingId -> ListingIndex(listing, Set.empty)
+      listing.listingId -> ListingIndex(listing, HashTreePSet.empty())
     }.toMap
   }
 
@@ -99,9 +106,9 @@ private class SearchRepository {
   }
 
   private def writeOut(): Unit = {
-    val json = Json.stringify(Json.toJson(reservations.map {
+    val json = Json.stringify(Json.toJson(ListingIndexMap(reservations.map {
       case (id, index) => id.toString -> index
-    }))
+    }.asJava)))
     val os = new FileOutputStream(reservationFile)
     try {
       os.write(json.getBytes("utf-8"))
@@ -112,10 +119,10 @@ private class SearchRepository {
   }
 
   def add(reservation: ReservationAdded): Done = {
-    reservations.get(reservation.listingId) match {
+    reservations.get(reservation.getListingId) match {
       case Some(ListingIndex(listing, res)) =>
-        if (res.forall(_.reservationId != reservation.reservationId)) {
-          reservations += (listing.listingId -> ListingIndex(listing, res + reservation))
+        if (res.asScala.forall(_.getReservationId != reservation.getReservationId)) {
+          reservations += (listing.listingId -> ListingIndex(listing, HashTreePSet.from(res).plus(reservation)))
           writeOut()
         }
         Done
@@ -125,10 +132,10 @@ private class SearchRepository {
     }
   }
 
-  def search(checkin: LocalDate, checkout: LocalDate): List[ListingSearchResult] = {
+  def search(checkin: LocalDate, checkout: LocalDate): util.List[ListingSearchResult] = {
     reservations.values.collect {
-      case ListingIndex(listing, res) if res.forall(reservationDoesNotConflict(checkin, checkout)) => listing
-    }.toList
+      case ListingIndex(listing, res) if res.asScala.forall(reservationDoesNotConflict(checkin, checkout)) => listing
+    }.toList.asJava
   }
 
   def name(listingId: UUID): Option[String] = {
@@ -136,8 +143,8 @@ private class SearchRepository {
   }
 
   private def reservationDoesNotConflict(checkin: LocalDate, checkout: LocalDate)(reservationAdded: ReservationAdded): Boolean = {
-    val rCheckin = reservationAdded.reservation.checkin
-    val rCheckout = reservationAdded.reservation.checkout
+    val rCheckin = reservationAdded.getReservation.getCheckin
+    val rCheckout = reservationAdded.getReservation.getCheckout
 
     if (checkout.isBefore(rCheckin) || checkout == rCheckin) {
       true
@@ -149,7 +156,9 @@ private class SearchRepository {
   }
 }
 
-private case class ListingIndex(listing: ListingSearchResult, reservations: Set[ReservationAdded])
-private object ListingIndex {
-  implicit val format: Format[ListingIndex] = Json.format
+private case class ListingIndex(@BeanProperty var listing: ListingSearchResult, @BeanProperty var reservations: util.Set[ReservationAdded]) {
+  def this() = this(null, null)
+}
+private case class ListingIndexMap(@BeanProperty var map: util.Map[String, ListingIndex]) {
+  def this() = this(null)
 }
